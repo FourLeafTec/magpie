@@ -67,6 +67,31 @@ remote list never gains a fabricated Jev alias.
 An older peer without the decision-list extension continues serving its
 other APIs but must be updated before its decisions can be discovered.
 See [`decide.go`](../../internal/provider/decide.go).
+## A plugin provider's decision API
+
+A plugin may serve a decision API (TypeSafe's System One) for the provider
+it already signs in to, rather than have the user register a second
+provider. Its `config` hook sets `decide: true` on the provider; the host
+passes that through (`info` and `providers` in
+[`host.js`](../../internal/plugin/host.js)) and
+[`pluginProvider`](../../internal/provider/plugins.go) gives the provider
+`Decide = plugin://<id>/v1`, the same base as its conversations.
+
+The requests then go through the plugin's own fetch, at that base
+`/systemone` — the plugin's `auth.loader` answers it, exactly as it answers
+`/chat/completions`. There is no separate URL to give: `pluginFetch` sends
+only to the host the loader named in `baseURL`, so any other address, a
+port of the plugin's own included, is refused and belongs on a provider
+the user adds instead.
+
+
+`plugin.Provider.Decide` is only the declaration. Which of the provider's
+models answers a routing group is still `DecidesModel`: a plugin that
+serves both kinds marks them by name (`jev-*`) or through the remote
+decision list. The reverse holds too: a provider with no `decide` has no
+decision API, so its Jev-named model stays a conversation model.
+
+
 
 The CLI and TUI report model-list fetch errors for remote and other mixed providers
 (such as OpenRouter, serving conversation and decision models). Only a

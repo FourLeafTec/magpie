@@ -1015,6 +1015,10 @@ async function info(id, key, strict) {
     api: cfg?.api ?? md?.api,
     models: {},
   }
+  // a plugin that serves a decision API for this provider says so on the
+  // config hook: magpie asks it for a routing group's classifier then,
+  // through this plugin's fetch, at the provider's own base /systemone
+  if (typeof cfg?.decide === "boolean") out.decide = cfg.decide
   if (md) for (const m of Object.values(md.models ?? {})) out.models[m.id] = fromModelsDev(md, m)
   for (const [key, m] of Object.entries(cfg?.models ?? {})) {
     const was = out.models[m.id ?? key]
@@ -1165,6 +1169,7 @@ async function providers({ proxies } = {}) {
       icon: iconOf(a),
       usage: typeof a.auth.usage === "function",
       checkin: typeof a.auth.checkin === "function",
+      decide: p.decide === true,
       maxConcurrency: concurrencyOf(a),
       signedIn: keys.length > 0,
       authType: first?.type ?? "",
@@ -1204,6 +1209,9 @@ async function providers({ proxies } = {}) {
           rateWas: rateOf(m.rateWas),
           // run fast when the request's service_tier is priority (Cursor's)
           fast: m.fast === true,
+          // the plugin marked it as answering a decision API (System
+          // One), not a model to chat with
+          decides: m.decides === true,
         })),
     })
   }

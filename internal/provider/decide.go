@@ -71,7 +71,10 @@ func (p Provider) DecideOnly() bool {
 }
 
 // DecidesModel distinguishes Jev from the conversation models a gateway
-// also serves. A dedicated decision API may use any model name.
+// also serves. A dedicated decision API may use any model name, and a
+// plugin says which of its models decides (plugin.Model.Decides): the
+// name rule can't tell Clef or a vendor's own name, and would take a
+// gateway's Jev Router, a chat model, for one.
 func (p Provider) DecidesModel(model string) bool {
 	if !p.Decides() {
 		return false
@@ -83,13 +86,30 @@ func (p Provider) DecidesModel(model string) bool {
 		// OpenRouter's Jev Router (typesafe/jev-router) is a chat model
 		return slices.ContainsFunc(p.decideListed(), func(m catalog.Model) bool { return m.ID == model })
 	}
+	if p.pluginDecides(model) {
+		// a plugin's decision model need not be named Jev (Clef, a
+		// vendor's own name): it said which of its models decides
+		return true
+	}
 	return jevID(model) || p.DecideVia() == ViaCloudflare && CloudflareClef(model)
 }
 
+// pluginDecides is whether the plugin marked model as one that answers its
+// decision API (plugin.Model.Decides), rather than leaving magpie to read
+// it off the id.
+func (p Provider) pluginDecides(model string) bool {
+	if !p.IsPlugin() {
+		return false
+	}
+	m, ok := pluginModel(*p.Account.plugin, model)
+	return ok && m.Decides
+}
+
 // isDecision uses a listed remote model's marker without reading its whole
-// list again. Other providers keep their endpoint and name-based rules.
+// list again, and a plugin's the same way: other providers keep their
+// endpoint and name-based rules.
 func (p Provider) isDecision(m catalog.Model) bool {
-	if p.IsRemoteMagpie() {
+	if p.IsRemoteMagpie() || m.Decides {
 		return m.Decides
 	}
 	return p.DecidesModel(m.ID)
@@ -116,13 +136,36 @@ func (p Provider) listsDecisions() bool { return openRouterDecisions(p.Decide) !
 // list of its decision models, beside its chat models' list.
 func decisionsID(id string) string { return id + ".decisions" }
 
-// DecisionModels are the decision models listed separately from a provider's
-// conversations: OpenRouter's own list, or a remote magpie's marked models.
+// DecisionModels are the decision models a provider serves apart from its
+// conversations: OpenRouter's own list, a remote magpie's marked models,
+// or a plugin's marked ones — a plugin provider is otherwise read by name,
+// which hides a decision model that doesn't happen to be called Jev in the
+// editor's picker.
 func (p Provider) DecisionModels() []catalog.Model {
+	if p.IsPlugin() {
+		// a plugin's marks mean a decision API only where it said it
+		// serves one: decide is the gate for the whole provider
+		if !p.Decides() {
+			return nil
+		}
+		return p.pluginDecisionModels()
+	}
 	if !p.IsRemoteMagpie() && (p.DecideOnly() || !p.listsDecisions()) {
 		return nil
 	}
 	return p.decideModels()
+}
+
+// pluginDecisionModels are the plugin's models it marked as decisions, in
+// its own order.
+func (p Provider) pluginDecisionModels() []catalog.Model {
+	var out []catalog.Model
+	for _, m := range pluginCatalog(*p.Account.plugin) {
+		if m.Decides {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // decideListDue reports whether p's list of decision models at OpenRouter
@@ -212,6 +255,19 @@ func (p Provider) Jev() string {
 	if p.IsRemoteMagpie() {
 		if models := p.decideListed(); len(models) > 0 {
 			return models[0].ID
+		}
+		return ""
+	}
+	if p.IsPlugin() {
+		// A plugin provider is read by name, but the decision model it
+		// marked may be called something else (jev-1.13-free, Clef): the
+		// Jev among its marks is the model a request naming none is asked,
+		// and a plugin whose decisions aren't Jev has none — never a
+		// guessed jev-latest.
+		for _, m := range p.pluginDecisionModels() {
+			if jevID(m.ID) {
+				return m.ID
+			}
 		}
 		return ""
 	}
@@ -479,7 +535,13 @@ func Deciders() []Entry {
 			continue
 		}
 		ms := p.Exposed()
-		if !p.DecideOnly() && (len(p.Models) == 0 || p.listsDecisions() || p.IsRemoteMagpie()) {
+		if p.IsPlugin() {
+			// a plugin's marked decisions, whether or not Exposed kept them:
+			// a long list is sliced down (manyModels), and a decision model
+			// answers no conversation, so it must still be offerable as a
+			// classifier
+			ms = p.DecisionModels()
+		} else if !p.DecideOnly() && (len(p.Models) == 0 || p.listsDecisions() || p.IsRemoteMagpie()) {
 			ms = p.decideModels() // the conversation picker's limit does not hide Jev
 		}
 		for _, m := range ms {
@@ -629,6 +691,11 @@ func resolveDecideModel(p Provider, name string) (string, bool) {
 	if !p.DecidesModel(name) {
 		return "", false
 	}
+	if p.pluginDecides(name) {
+		// the plugin's own marked decisions: its listing runs no
+		// advertise function, so decideModels has no list to check against
+		return name, true
+	}
 	for _, m := range p.decideModels() {
 		if m.ID == name {
 			return name, true
@@ -662,6 +729,15 @@ func deciderByID(id string) (Provider, bool) {
 // account's Workers AI models, or by finding its account) and Jev is the
 // model.
 func (p Provider) fetchDecide(ctx context.Context) ([]catalog.Model, error) {
+	if p.IsPlugin() {
+		// a plugin's decisions are the models it marked: asking it for its
+		// list checks its key, and it answers System One for those models
+		// at /systemone
+		if _, err := p.fetch(ctx); err != nil {
+			return nil, err
+		}
+		return withDecideFacts(p.DecisionModels()), nil
+	}
 	if p.IsRemoteMagpie() {
 		if _, err := p.fetch(ctx); err != nil {
 			return nil, err
@@ -907,7 +983,9 @@ func (p Provider) checkKey(ctx context.Context, u string) error {
 }
 
 // testDecide asks the decision API for its models (or checks its key),
-// the one call it answers that costs nothing.
+// the one call it answers that costs nothing. A plugin's decisions are its
+// model listing — the marked models it named — since fetchDecide reads
+// that same list.
 func (p Provider) testDecide(ctx context.Context) []Result {
 	t0 := time.Now()
 	r := Result{Protocol: "decide", Model: p.Jev()}

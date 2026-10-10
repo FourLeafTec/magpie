@@ -284,6 +284,8 @@ magpie quota                             <span class="c"># acme · Pro · 5h 37%
 }</pre>
     </div>
     <p>模型还可以写 <code>provider: { npm, api }</code>，使用和供应商不同的 API 或地址；也可以写 <code>headers</code>、<code>options</code>，以及用 <code>disabled: true</code> 隐藏它。</p>
+    <p>供应商如果同时提供决策 API（TypeSafe 的 System One），在那个条目上写 <code>decide: true</code>：路由组就可以把该供应商自己的模型当分类器，magpie 会把问题发到和对话相同的基地址、路径 <code>/systemone</code>，走你的 <code>loader</code> 的 <code>fetch</code> —— 像应答 <code>/chat/completions</code> 那样应答这个路径即可。模型的标记是另一回事：其中哪个是决策模型由名字决定（<code>jev-…</code>），和任何同时提供两类模型的供应商一样。不写 <code>decide</code> 时，Jev 名字的模型仍是普通对话模型。</p>
+
 
     <h3 id="apis">模型使用的 API</h3>
     <p>模型或供应商上 <code>npm</code> 指定的 AI SDK 包决定了 API，也就决定了你的 <code>fetch</code> 收到的请求格式。无论 agent 发来的是什么，magpie 的网关都已经转换好了：</p>

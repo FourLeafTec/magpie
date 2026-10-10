@@ -51,6 +51,11 @@ type Model struct {
 	Image     bool     `json:"image"`
 	Released  string   `json:"released"`
 	Variants  []string `json:"variants"`
+	// Decides is set by the plugin on a model that answers a decision API
+	// (TypeSafe's System One): which of a provider's models decides can't
+	// be read off its id alone (Clef, a vendor's own name), so the plugin
+	// says it, as a remote magpie marks its decisions.
+	Decides bool `json:"decides,omitempty"`
 	// Free is set by the plugin on a model the plan serves at no cost to
 	// its allowance (WorkBuddy's "credits": "x0.00")
 	Free bool `json:"free"`
@@ -90,7 +95,12 @@ type Provider struct {
 	Usage bool `json:"usage"`
 	// Checkin says the plugin presses its vendor's daily check-in for each
 	// account (auth.checkin)
-	Checkin   bool    `json:"checkin,omitempty"`
+	Checkin bool `json:"checkin,omitempty"`
+	// Decide says the plugin serves a decision API for this provider
+	// (TypeSafe's System One), so magpie asks it for a routing group's
+	// classifier through the plugin's own fetch. No separate URL is
+	// given: the requests go to the provider's base, at /systemone.
+	Decide    bool    `json:"decide,omitempty"`
 	SignedIn  bool    `json:"signedIn"`
 	AuthType  string  `json:"authType"`
 	AccountID string  `json:"accountId"`

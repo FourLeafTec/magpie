@@ -284,6 +284,8 @@ magpie quota                             <span class="c"># acme · Pro · 5h 37%
 }</pre>
     </div>
     <p>A model can also say <code>provider: { npm, api }</code> to use another API or address than the provider’s, <code>headers</code>, <code>options</code>, and <code>disabled: true</code> to hide it.</p>
+    <p>Add <code>decide: true</code> to that entry when the provider serves a decision API too (TypeSafe’s System One): a routing group can then name the provider’s own model as its classifier, and magpie posts the questions to the same base as the conversations, at <code>/systemone</code>, through your <code>loader</code>’s <code>fetch</code> — answer that path as you answer <code>/chat/completions</code>. Marking the models is separate: which of them decides is decided by its name (<code>jev-…</code>), as for any provider that serves both. Without <code>decide</code> a Jev-named model stays an ordinary conversation model.</p>
+
 
     <h3 id="apis">The API a model speaks</h3>
     <p>The AI SDK package named by <code>npm</code>, on the model or on the provider, decides the API. That decides the shape of the request your <code>fetch</code> receives. Whatever the agent sent, magpie’s gateway has already translated it:</p>
